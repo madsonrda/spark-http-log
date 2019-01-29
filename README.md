@@ -18,10 +18,65 @@ O SparkContext é um objeto que representa o ponto de partida da aplicação Spa
 
 ## Explique com suas palavras o que é Resilient Distributed Datasets (RDD).
 
-RDD é uma coleção imutável de elementos dos dados que podem ser particionada atráves dos nós de um cluster e pode executar operações como transformações e ações de paralelamente.
+RDD é uma coleção imutável de elementos dos dados que podem ser particionada através dos nós de um cluster e pode executar operações como transformações e ações de paralelamente.
 
-Por exemplo, sejá os dados `` ["maçã","banana","laranja","maçã","maçã","laranja","morango"]`` podemos obter um RDD com as seguintes 3 partições ``[['maçã', 'banana'], ['laranja', 'maçã'], ['maçã', 'laranja', 'morango']]``.
+Por exemplo, seja os dados `` ["maçã","banana","maçã","maçã","laranja","maçã","maçã","laranja","morango"]`` podemos obter um RDD com as seguintes 3 partições ``[['maçã', 'banana','maçã'], ['maçã','laranja', 'maçã'], ['maçã', 'laranja', 'morango']]``, onde cada partição pode ser distribuída para diferentes nós de um cluster e ser processada paralelamente.
 
+## GroupByKey é menos eficiente que reduceByKey em grandes dataset. Por quê?
 
+Com o reduceByKey o Spark pode combinar os resultados com uma mesma chave em cada partição antes arrumar os dados. 
+
+Ex: seja o RDD 
+``[[('maçã',1), ('banana',1),('maçã',1)], [('maçã',1),('laranja',1), ('maçã',1)], [('maçã',1), ('laranja',1), ('morango',1)]]``
+
+com reduceByKey primeiro os elementos com mesma chaves são combinados de acordo com uma função passada por parâmetro em cada partição
+``[[('maçã',2), ('banana',1)], [('maçã',2),('laranja',1)], [('maçã',1), ('laranja',1), ('morango',1)]]``
+
+em seguida arrumados
+``[[('maçã',2),('maçã',2),('maçã',1),('banana',1)], [('laranja',1), ('laranja',1), ('morango',1)]]``
+
+por fim combinados
+``[[('maçã',5),('banana',1)], [('laranja',2), ('morango',1)]]``
+
+Já com GroupByKey os elementos de mesma chave são apenas arrumados e posteriormente combinados.
+
+Ex: seja o RDD
+``[[('maçã',1), ('banana',1),('maçã',1)], [('maçã',1),('laranja',1), ('maçã',1)], [('maçã',1), ('laranja',1), ('morango',1)]]``
+
+primeiramente os elementos serão combinados
+``[[('maçã',1), ('maçã',1),('maçã',1),('maçã',1),('maçã',1)], [('laranja',1),('laranja',1), ], [('morango',1)],[('banana',1)]]``
+
+por fim combinados
+``[[('maçã',5)], [('laranja',2)], [('banana',1)], [('morango',1)]]``
+
+Como podemos observar nos exemplos acima, a quantidade de dados que são arrumados com o GroupByKey é bem maio que com reduceByKey. E essa diferença pode escalar muito se considerarmos um grande dataset. Com o groupByKey há uma grande quantidade de dados para serem transferidos pela rede desnecessariamente. Além de ocasionar erros de falta de memória, caso um executor não tenha memória suficiente para armazenar os dados arrumados
+
+## Explique o que o código Scala abaixo faz.
+
+```
+val textFile = sc.textFile("hdfs://...")
+val counts = textFile.flatMap(line => line.split(" "))
+                 .map(word => (word, 1))
+                 .reduceByKey(_ + _)
+counts.saveAsTextFile("hdfs://...")
+```
+
+A linha ``val textFile = sc.textFile("hdfs://...")`` cria um RDD a partir de um arquivo de texto armazenado no hdfs.
+Exemplo: A partir de arquivo de texto contendo ``maçã banana maçã maçã laranja maçã maçã laranja morango`` teríamos como resultado o seguinte RDD ``[['maçã banana maçã maçã laranja maçã maçã laranja morango']]``
+
+A linha ``val counts = textFile.flatMap(line => line.split(" "))`` transforma o RDD textFile aplicando a função flatMap em um novo RDD com as palavras separadas 
+``[['maçã','banana','maçã','maçã','laranja','maçã','maçã','laranja','morango']]``
+
+A linha ``.map(word => (word, 1))`` aplica a função passada como parâmetro da transformação map em cada elemento do RDD resultante do flatMap, produzindo um novo RDD
+``[[('maçã', 1), ('banana', 1), ('maçã', 1), ('maçã', 1), ('laranja', 1), ('maçã', 1), ('maçã', 1), ('laranja', 1),('morango', 1)]]``
+
+A linha ``.reduceByKey(_ + _)`` aplica uma ação no RDD acima, a qual combina os elementos com a mesma palavra chave somando os valores e por fim retornando a variável counts um novo RDD como mostrado abaixo que representa a quantidade ocorrências de cada palavra no texto original.
+``[[('banana', 1)], [('maçã', 5), ('laranja', 2), ('morango', 1)]]``
+
+Finalmente, a linha ``counts.saveAsTextFile("hdfs://...")`` salva o RDD counts como um arquivo de texto no hdfs.
+
+## HTTP requests to the NASA Kennedy Space Center WWW server
+
+O código usando python/pyspark e respostas para as questões encontram-se no arquivo ``desafio.ipynb``. Para execução desse teste foi utilizado um cluster Spark/YARN do serviço DataProc da nuvem google. Os dois arquivos de log foram carregados para pasta ``/tmp`` do hdfs desse cluster e portanto lidos pelo Spark diretamente do hdfs.
 
 
